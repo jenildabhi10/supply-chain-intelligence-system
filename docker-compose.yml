@@ -1,0 +1,46 @@
+# Local-development stack: ingest scheduler + FastAPI + Next.js frontend.
+# Production deploys are split: Vercel (frontend) + HuggingFace Spaces (API).
+# See deploy/README.md for production guides.
+
+services:
+  # ── Ingestion scheduler ───────────────────────────────────────────────────
+  scheduler:
+    build: .
+    command: python scheduler.py
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: unless-stopped
+
+  # ── FastAPI backend ───────────────────────────────────────────────────────
+  api:
+    build: .
+    env_file: .env
+    environment:
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Next.js frontend ──────────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://api:8000
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
